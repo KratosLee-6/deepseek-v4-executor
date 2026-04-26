@@ -1,8 +1,4 @@
-#!/usr/bin/env python3
-"""
-DeepSeek V4 API 调用脚本
-用法: python deepseek_call.py --task "任务描述" --mode [chat|search|tools] --api_key "YOUR_API_KEY"
-"""
+<evicted reason="not_applied" chars=4245 />
 
 import argparse
 import json
@@ -25,6 +21,28 @@ DEFAULT_BASE_URL = "https://api.deepseek.com"
 DEFAULT_MODEL = "deepseek-chat"
 DEFAULT_TIMEOUT = 120  # 秒
 MAX_RETRIES = 2
+AVAILABLE_MODELS = {
+    "deepseek-chat": {
+        "name": "DeepSeek V3（deepseek-chat）",
+        "desc": "✅ 性价比最高，日常对话和搜索推荐",
+        "price_in": "$0.27/M", "price_out": "$1.10/M",
+        "tips": "搜索、信息查询、写作、翻译等日常任务"
+    },
+    "deepseek-v4-flash": {
+        "name": "DeepSeek V4 Flash（deepseek-v4-flash）",
+        "desc": "🔥 V4 新版，速度快，适合需要 V4 能力的任务",
+        "price_in": "$0.28/M", "price_out": "$2.19/M",
+        "tips": "需要 V4 能力的复杂分析、联网搜索"
+    },
+    "deepseek-v4-pro": {
+        "name": "DeepSeek V4 Pro（deepseek-v4-pro）",
+        "desc": "💎 V4 旗舰版，效果最好但成本最高",
+        "price_in": "$0.55/M", "price_out": "$2.75/M",
+        "tips": "高精度任务、重要文档生成、复杂推理"
+    }
+}
+MODEL_FILE = "model.txt"
+API_KEY_FILE = "api_key.txt"
 # =================================================
 
 
@@ -35,11 +53,73 @@ def parse_args():
                         choices=["chat", "search", "tools"],
                         help="调用模式: chat(基础对话), search(联网搜索), tools(函数调用)")
     parser.add_argument("--api_key", "-k", type=str, default=None, help="DeepSeek API Key")
-    parser.add_argument("--model", type=str, default=DEFAULT_MODEL, help="模型名称")
+    parser.add_argument("--model", type=str, default=None, help="模型名称，留空则进入交互式选择")
     parser.add_argument("--stream", action="store_true", help="启用流式输出")
     parser.add_argument("--system_prompt", type=str, default=None, help="自定义系统提示词")
     parser.add_argument("--max_tokens", type=int, default=4096, help="最大输出token数")
     return parser.parse_args()
+
+
+def get_model_dir():
+    """获取模型文件目录（相对于脚本所在位置）"""
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "model.txt")
+
+
+def save_model_choice(model_id: str) -> None:
+    """保存用户选择的模型到本地文件"""
+    with open(get_model_dir(), "w", encoding="utf-8") as f:
+        f.write(model_id)
+
+
+def load_saved_model() -> str | None:
+    """从本地文件加载上次保存的模型"""
+    path = get_model_dir()
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            saved = f.read().strip()
+            if saved in AVAILABLE_MODELS:
+                return saved
+    return None
+
+
+def interactive_model_select() -> str:
+    """交互式模型选择菜单"""
+    print("\n" + "=" * 52)
+    print("🔷 请选择要使用的 DeepSeek 模型")
+    print("=" * 52)
+    for mid, info in AVAILABLE_MODELS.items():
+        print(f"\n▶ {mid}")
+        print(f"  {info['name']}")
+        print(f"  {info['desc']}")
+        print(f"  💰 输入: {info['price_in']} | 输出: {info['price_out']}")
+        print(f"  💡 {info['tips']}")
+    print("\n" + "-" * 52)
+    print("提示: 输入编号 (1/2/3) 或直接输入模型ID")
+    print("设置默认后，之后调用无需再次选择")
+    print("=" * 52 + "\n")
+
+    # 读取用户输入
+    choice = input("请选择 (1/2/3，回车确认): ").strip()
+
+    if choice == "1":
+        selected = "deepseek-chat"
+    elif choice == "2":
+        selected = "deepseek-v4-flash"
+    elif choice == "3":
+        selected = "deepseek-v4-pro"
+    elif choice in AVAILABLE_MODELS:
+        selected = choice
+    else:
+        print("⚠️ 无效选择，将使用默认模型 deepseek-chat")
+        selected = "deepseek-chat"
+
+    confirm = input(f"确认使用【{AVAILABLE_MODELS[selected]['name']}】？(Y/n): ").strip().lower()
+    if confirm == "n":
+        return interactive_model_select()
+
+    save_model_choice(selected)
+    print(f"✅ 已保存为默认模型：{AVAILABLE_MODELS[selected]['name']}")
+    return selected
 
 
 def load_api_key(api_key: Optional[str]) -> str:
@@ -255,12 +335,31 @@ def format_output(result: Dict[str, Any], mode: str) -> str:
 def main():
     args = parse_args()
 
-    print("=" * 50)
+    # 模型选择逻辑：参数指定 > 保存的默认 > 交互选择
+    if args.model is None:
+        saved = load_saved_model()
+        if saved:
+            print(f"\n📌 检测到上次保存的模型：{AVAILABLE_MODELS[saved]['name']}")
+            confirm = input("直接使用该模型？(Y/输入其他跳过): ").strip().lower()
+            if confirm != "" and confirm != "y" and confirm != "是":
+                args.model = interactive_model_select()
+            else:
+                args.model = saved
+                print(f"✅ 使用上次保存的模型：{AVAILABLE_MODELS[args.model]['name']}")
+        else:
+            args.model = interactive_model_select()
+    elif args.model not in AVAILABLE_MODELS:
+        print(f"⚠️ 未知模型 [{args.model}]，将进入交互式选择...")
+        args.model = interactive_model_select()
+
+    print("\n" + "=" * 50)
     print("🔷 DeepSeek V4 执行层工具")
     print("=" * 50)
     print(f"📌 任务: {args.task}")
     print(f"📌 模式: {args.mode}")
-    print(f"📌 模型: {args.model}")
+    print(f"📌 模型: {args.model}（{AVAILABLE_MODELS[args.model]['name']}）")
+    info = AVAILABLE_MODELS[args.model]
+    print(f"💰 费用参考: 输入 {info['price_in']} | 输出 {info['price_out']}")
 
     try:
         # 1. 获取 API Key
