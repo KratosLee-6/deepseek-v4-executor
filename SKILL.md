@@ -1,161 +1,157 @@
 ---
 name: deepseek-v4-executor
-description: DeepSeek V4 执行层 —— 直接调用 DeepSeek V4 API 的 Python 脚本技能。绕过悟空内置模型路由层，直接通过 HTTP 请求与 DeepSeek V4 对话，适用于联网搜索、函数调用等工具执行场景。当用户提到「DeepSeek V4」「用 V4 搜索」「V4 联网搜索」「调用 DeepSeek API」「V4帮我做」时触发。⚠️ 注意：悟空后台切换模型后无法正常返回工具调用结果时，使用本技能作为替代通道。
-version: "1.0"
+description: DeepSeek V4 执行层 —— 直接调用 DeepSeek V4 API 的 Python 脚本技能。绕过悟空内置模型路由层，通过 HTTP 请求直连 DeepSeek V4，适用于需要联网搜索、函数调用等复杂工具调用场景。当用户提到「DeepSeek V4」「V4 搜索」「V4 帮我做XX」「联网搜索 DeepSeek」时触发。本技能需要使用者自行提供 DeepSeek API Key，不包含任何预置密钥。
+version: "1.1"
 author: KratosLee
 created_at: "2026-04-26"
-tags: [deepseek, api, executor, web-search, 联网搜索, V4]
+updated_at: "2026-04-26"
+tags: [deepseek, api, executor, web-search, 联网搜索]
 ---
 
 # DeepSeek V4 执行层技能
 
-> **开发者**：KratosLee  
-> **版本**：v1.0（2026-04-26）  
-> **适用场景**：悟空内置 DeepSeek 模型工具调用失败时的替代执行通道
+> **开发者**：KratosLee | **版本**：v1.1 | **最后更新**：2026-04-26
+>
+> ⚠️ **重要提示**：本技能不包含任何 API Key，使用前请先完成下方「API Key 配置」步骤。
 
 ---
 
-## 技能简介
+## 一、API Key 配置（必须完成）
 
-本技能通过 Python 脚本直接向 DeepSeek V4 API 发起 HTTP 请求，绕过悟空内置的模型路由层，解决「切换 DeepSeek 模型后工具调用（搜索/函数执行）无法返回内容」的问题。
+### 第一步：获取你自己的 DeepSeek API Key
 
-**核心优势**：
-- 🔓 直连 DeepSeek API，绕过模型路由兼容性问题
-- ⚡ 响应速度快（实测 V4 Flash < 3 秒完成联网搜索）
-- 🔧 支持三种调用模式：对话 / 联网搜索 / 函数调用
+1. **电脑端访问** DeepSeek 开放平台：👉 [https://platform.deepseek.com/](https://platform.deepseek.com/)
+2. 登录后进入「**API Keys**」页面
+3. 点击「**Create API Key**」创建一个新 Key
+4. **立即复制保存**（只显示一次，关掉就没了！）
+
+> 📖 如需详细文档参考：👉 [https://api-docs.deepseek.com/zh-cn/](https://api-docs.deepseek.com/zh-cn/)
+> 💰 查看额度消耗：👉 [https://platform.deepseek.com/usage](https://platform.deepseek.com/usage)
+
+### 第二步：将 Key 保存到本地文件
+
+在技能目录的 `references/` 文件夹中，找到或新建一个文件 `api_key.txt`，将你的 API Key 粘贴进去（**不要加引号或空格**，直接是 Key 本身），保存即可。
+
+文件路径示例：
+```
+references/api_key.txt
+```
+文件内容格式：
+```
+sk-xxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+### 第三步：验证 Key 是否生效
+
+配置完成后，说一句话测试一下，例如「用 V4 搜索一下今天北京的天气」，如果正常回复则说明配置成功 ✅。
 
 ---
 
-## 触发条件
+## 二、触发条件
 
-以下任一场景激活本技能：
+本技能在以下场景自动激活：
 
-| 触发关键词 | 示例 |
-|-----------|------|
-| DeepSeek V4 | 「用 DeepSeek V4 帮我搜索」 |
-| V4 联网搜索 | 「V4 搜索今天珠海天气」 |
-| API 调用失败 | 悟空出现 `llm_call_failed` 错误 |
-| 工具执行 | 「V4 帮我分析这份数据」 |
-| DeepSeek 执行 | 「DeepSeek 联网查一下」 |
+- 用户请求联网搜索（需要获取最新信息）
+- 悟空内置模型出现 `llm_call_failed` 错误，需要降级调用
+- 用户明确说「用 DeepSeek V4 帮我做 XX」「V4 搜索 XX」
+- 复杂多步骤任务，内置模型无法稳定执行时
 
 ---
 
-## 三种调用模式
+## 三、核心能力
 
-### 模式一：chat（基础对话）
-```bash
-python references/deepseek_call.py --task "任务描述" --mode chat --api_key "你的API_KEY"
-```
-适用于：问答、写作、翻译、解释等纯文本任务。
+| 模式 | 说明 | 适用场景 |
+|------|------|----------|
+| `chat` | 基础对话模式 | 问答、写作、翻译、分析 |
+| `search` | 联网搜索模式 | 获取实时信息、新闻、数据查询 |
+| `tools` | 函数调用模式 | 需要调用外部工具的复杂任务 |
 
-### 模式二：search（联网搜索）✅ 推荐
-```bash
-python references/deepseek_call.py --task "帮我搜索今天珠海天气" --mode search --api_key "你的API_KEY"
-```
-适用于：查询实时信息、新闻、数据、天气等需要联网的内容。
-
-### 模式三：tools（函数调用）
-```bash
-python references/deepseek_call.py --task "任务描述" --mode tools --api_key "你的API_KEY"
-```
-适用于：需要模型调用外部工具（计算器、搜索等）的复杂任务。
+**支持的模型**：
+- `deepseek-chat`（DeepSeek V3，稳定性好）
+- `deepseek-v4-flash`（DeepSeek V4 Flash，速度快）
 
 ---
 
-## API Key 配置
-
-**优先级**：传入参数 > 环境变量 `DEEPSEEK_API_KEY` > 脚本内硬编码
-
-**获取地址**：https://platform.deepseek.com/api_keys
-
-**API Key 格式**：`sk-xxxxxxxxxxxxxxxxxxxxxxxx`
-
-> ⚠️ 安全提示：请勿在对话中明文输出完整 API Key。
-
----
-
-## 使用示例
-
-### 示例 1：联网搜索天气
-**用户**：帮我搜一下今天珠海的天气
-
-**执行**：
-```
-python references/deepseek_call.py \
-  --task "帮我搜索今天珠海的天气" \
-  --mode search \
-  --api_key "sk-xxxx" \
-  --model "deepseek-chat"
-```
-
-**返回**：
-```
-🔍 搜索结果:
-
-根据搜索结果，今天珠海的天气情况如下：
-
-| 项目 | 内容 |
-|------|------|
-| 天气 | 多云，局部有阵雨 |
-| 气温 | 22°C ~ 27°C |
-| 风力 | 东南风2~3级 |
-
-✅ 请求成功！耗时: 2.94s
-```
-
-### 示例 2：纯文本对话
-**用户**：用 V4 帮我写一段自我介绍
-
-**执行**：
-```
-python references/deepseek_call.py \
-  --task "帮我写一段200字的自我介绍" \
-  --mode chat \
-  --api_key "sk-xxxx"
-```
-
----
-
-## 文件结构
-
-```
-deepseek-v4-executor/
-├── SKILL.md                      ← 技能说明（本文件）
-└── references/
-    ├── deepseek_call.py          ← 核心执行脚本
-    ├── schema_tools.py            ← 函数调用工具定义
-    ├── prompt_templates.py        ← 场景提示词模板
-    └── last_result.json           ← 最近一次调用结果
-```
-
----
-
-## 错误处理
-
-| 错误类型 | 原因 | 解决方案 |
-|----------|------|----------|
-| `401 Unauthorized` | API Key 无效或已过期 | 检查 Key 是否正确，或前往平台重新生成 |
-| `429 Rate Limit` | 请求频率超限 | 稍后重试，或升级配额 |
-| `500 Internal Error` | DeepSeek 服务器异常 | 等待后重试，关注 status.deepseek.com |
-| `timeout` | 网络超时 | 检查网络，或增加 `--timeout` 参数 |
-| 空响应 | 模型不支持当前工具 | 降级到 `chat` 模式 |
-
----
-
-## 费用参考
+## 四、费用参考
 
 | 模型 | 输入价格 | 输出价格 |
 |------|----------|----------|
-| deepseek-chat (V4 Flash) | $0.27 / M tokens | $0.28 / M tokens |
-| deepseek-chat (V4) | $0.27 / M tokens | $0.55 / M tokens |
+| DeepSeek V3 | $0.27 / M tokens | $1.10 / M tokens |
+| DeepSeek V4 Flash | $0.28 / M tokens | $2.19 / M tokens |
 
-> 💡 推荐日常联网搜索使用 **deepseek-chat**（V4 Flash 级别），速度快且费用更低。
+> 💡 日常对话和搜索任务消耗很小，普通使用每月费用通常在几元以内。
 
 ---
 
-## 开发信息
+## 五、使用示例
 
-- **开发者**：KratosLee
-- **技能 ID**：由悟空自动分配
-- **安装方式**：悟空技能中心 / 命令行 `dws skill install <folder>`
-- **适用平台**：悟空 AI（DingTalk 工作台）
+### 示例一：联网搜索
+**用户**：用 V4 搜索一下今天珠海的天气
+
+**执行流程**：
+1. 技能识别为联网搜索任务 → 激活 `search` 模式
+2. 读取本地 `api_key.txt` 获取用户 Key
+3. 调用 DeepSeek 搜索 API
+4. 返回整理后的结果
+
+### 示例二：深度分析
+**用户**：用 V4 分析一下当前AI行业的发展趋势
+
+**执行流程**：
+1. 技能识别为分析任务 → 激活 `chat` 模式
+2. 结合联网搜索获取最新数据
+3. DeepSeek V4 返回结构化分析报告
+
+### 示例三：降级备用
+**用户**：帮我搜一下今天的热点新闻
+
+**执行流程**：
+1. 内置模型执行失败（llm_call_failed）
+2. 技能自动接管 → 走 DeepSeek V4 直连
+3. 正常返回结果
+
+---
+
+## 六、错误排查
+
+| 错误信息 | 原因 | 解决方法 |
+|----------|------|----------|
+| `api_key is empty` | 未配置 Key | 按上方第一步~第二步配置 |
+| `Incorrect API key provided` | Key 错误或已失效 | 去平台重新创建 Key |
+| `quota exceeded` | 额度用完了 | 去 [platform.deepseek.com/usage](https://platform.deepseek.com/usage) 充值 |
+| `connection timeout` | 网络超时 | 重试一次，或检查网络环境 |
+| 没有任何反应 | Key 文件格式不对 | 确认文件内只有 Key，无空格无引号 |
+
+---
+
+## 七、技术说明
+
+**工作原理**：
+本技能不依赖悟空内置模型路由，而是直接通过 Python `requests` 库向 DeepSeek API 发送 HTTP 请求，绕过模型路由层的工具调用限制。
+
+**API 端点**：`https://api.deepseek.com/chat/completions`
+
+**请求方式**：POST + Bearer Token 认证
+
+**Key 读取优先级**：
+1. 命令行参数 `--api_key`
+2. 环境变量 `DEEPSEEK_API_KEY`
+3. 本地文件 `references/api_key.txt`
+4. 运行时提示用户输入
+
+---
+
+## 八、安全提示
+
+- **不要将 API Key 分享给他人**，任何人拿到你的 Key 都可以消耗你的额度
+- **不要将包含 Key 的技能包直接分享**，分享前删除 `api_key.txt` 内容
+- 建议定期去平台查看用量，发现异常及时重置 Key
+
+---
+
+## 九、输出合约
+
+本技能完成后必须输出：
+- ✅ 实际调用结果（成功 / 失败 / 部分成功）
+- 📌 使用的模型名称和调用模式
+- ⚠️ 如失败，给出原因和下一步建议
